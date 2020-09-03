@@ -1,14 +1,15 @@
 #include<iostream>
 #include<random>
 #include<cmath>
+#include"matplotlibcpp.h"
 
-const double pi = 3.141592653589793;
+const double PI = std::acos(-1.0);
 
-double integrand(double x) {
+double integrand(const double x) {
     return 4.0 / (1.0 + x * x);
 }
 
-double trapezoidalIntegral(unsigned n) {
+double trapezoidalIntegral(const unsigned n) {
     const double stepsize = 1.0 / double(n);
     double integral = 0;
     for (unsigned i = 0; i <= n; ++i) {
@@ -18,7 +19,7 @@ double trapezoidalIntegral(unsigned n) {
     return integral;
 }
 
-double simpsonIntegral(unsigned n) {
+double simpsonIntegral(const unsigned n) {
     const double stepsize = 1.0 / 2.0 / double(n);
     double integral = 0;
     for (unsigned i = 0; i < n; ++i) {
@@ -28,7 +29,7 @@ double simpsonIntegral(unsigned n) {
     return integral;
 }
 
-bool inUnitCircle(double x, double y) {
+bool inUnitCircle(const double x, const double y) {
     return x * x + y * y < 1 ? true : false; 
 }
 
@@ -39,7 +40,7 @@ double get_random()
     return dis(e);
 }
 
-double montecarloIntegral(unsigned n) {
+double montecarloIntegral(const unsigned n) {
     std::default_random_engine e;
     std::uniform_real_distribution<double> dis(-1, 1); 
     unsigned numOfPointsInside = 0;
@@ -54,22 +55,52 @@ double montecarloIntegral(unsigned n) {
     
 
 int main() {
+    namespace plt = matplotlibcpp;
     std::cout << "calculated by trapezoidal rule" << std::endl;
     std::cout << "num of partitions : relative error" << std::endl;
-    for (unsigned i = 1; i < 100; ++i) {
-        std::cout << i << ":" << std::abs(trapezoidalIntegral(i) - pi) / pi << std::endl;
+    auto xs1 = std::vector<double>(20);
+    auto ys1 = std::vector<double>(20);
+    for (unsigned i = 80; i < 100; ++i) {
+        double y = std::abs(trapezoidalIntegral(i) - PI) / PI;
+        ys1.push_back(y);
+        xs1.push_back(i);
+        std::cout << i << " : " << y << std::endl;
     }
+    plt::subplot(3, 1, 1);
+    plt::plot(xs1, ys1);
+    plt::xlim(80, 100);
+    plt::ylabel("trapezoidal rule");
 
     std::cout << "calculated by simpson rule" << std::endl;
     std::cout << "num of partitions : relative error" << std::endl;
-    for (unsigned i = 1; i < 100; ++i) {
-        std::cout << i << ":" << std::abs(simpsonIntegral(i) - pi) / pi << std::endl;
+    auto xs2 = std::vector<double>(20);
+    auto ys2 = std::vector<double>(20);
+    for (unsigned i = 80; i < 100; ++i) {
+        double y = std::abs(simpsonIntegral(i) - PI) / PI;
+        ys2.push_back(y);
+        xs2.push_back(i);
+        std::cout << i << " : " << y << std::endl;
     }
-
+    plt::subplot(3, 1, 2);
+    plt::plot(xs2, ys2);
+    plt::xlim(80, 100);
+    plt::ylabel("simpson rule");
 
     std::cout << "calculated by monte carlo method" << std::endl;
     std::cout << "num of points : relative error" << std::endl;
-    for (unsigned i = 1000; i < 1100; ++i) {
-        std::cout << i << ":" << std::abs(montecarloIntegral(i) - pi) / pi << std::endl;
+    auto xs3 = std::vector<double>(20);
+    auto ys3 = std::vector<double>(20);
+    for (unsigned i = 1090; i < 1100; ++i) {
+        double y = std::abs(montecarloIntegral(i) - PI) / PI;
+        ys3.push_back(y);
+        xs3.push_back(i);
+        std::cout << i << " : " << y << std::endl;
     }
+    plt::subplot(3, 1, 3);
+    plt::plot(xs3, ys3);
+    plt::xlim(1090, 1100);
+    plt::ylabel("monte carlo");
+    plt::legend();
+    plt::show();
+    return 0;
 } 

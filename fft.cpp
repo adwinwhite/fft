@@ -8,7 +8,7 @@
 #include<bitset>
 #include<chrono>
 #include<cstdlib>
-//#include"matplotlibcpp.h"
+#include"matplotlibcpp.h"
 
 
 const double PI = std::acos(-1.0);
@@ -123,23 +123,33 @@ std::vector<std::complex<double>> bessel(const std::complex<double> z, const uns
     auto Xs = cfft(xs, true);
     using namespace std::complex_literals;
     for (unsigned l = 0; l < order; ++l) {
-        Xs[l] *= std::pow(1i, -l);
+        Xs[l] *= std::pow(1i, -l) * 2.0;
     }
     return Xs;
 }
 
+//results are more accurate than homework1.
 int main()
 {
+    namespace plt = matplotlibcpp;
     const unsigned ORDER = unsigned(std::pow(2, 16));
-    std::vector<unsigned> xs(ORDER);
+    std::vector<double> xs(ORDER);
     std::iota(xs.begin(), xs.end(), 0);
     for (unsigned i = 0; i < 3; ++i) {
         auto ys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
+        auto ysr = std::vector<double>(ORDER);
+        for (unsigned j = 0; j < ORDER; ++j) {
+            ysr[j] = ys[j].real();
+        }
+        plt::named_plot(std::to_string(std::pow(10, i)), xs, ysr);
         std::cout << "First ten terms of J(" << std::pow(10, i) << ", n)" << std::endl;
         std::cout << "n : J" << std::endl;
         for (unsigned j = 0; j < 10; ++j) {
             std::cout << j << " : " << ys[j] << std::endl;
         }
     }
+    plt::legend();
+    plt::xlim(0, 32);
+    plt::show();
     return 0;
 }
