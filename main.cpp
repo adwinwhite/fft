@@ -5,6 +5,7 @@
 #include<cmath>
 #include<memory>
 #include<bitset>
+#include<chrono>
 
 const double PI = std::acos(-1.0);
 
@@ -49,46 +50,94 @@ unsigned bitReverse32(const unsigned orig) {
 }
 
 unsigned bitReverseInt(const unsigned orig, const unsigned numOfBits) {
-    // numOfBits <= 32
+    if (numOfBits > 32) {
+        throw "The size of bits to be reversed should be smaller than 32";
+    }
     return bitReverse32(orig) >> (32 - numOfBits);
 }
 
+/*  The size should be smaller than 2^32.Otherwise, the code needs modifying.
+ *  The size should be power of 2.
+ */
 std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples, const bool isInverse) {
-    //The size should be smaller than 2^32 or the code needs modifying.
     const unsigned sampleSize = unsigned(samples.size());
     std::vector<std::complex<double>> samplesBuffer(sampleSize);
     const unsigned numOfBits = unsigned(std::log2(sampleSize));
-    for (unsigned i = 0; i < sampleSize; i++) {
-        samplesBuffer[i] = samples[bitReverseInt(i, numOfBits)];
+
+    #pragma omp parallel
+    {
+        #pragma omp for schedule(dynamic, 5)
+        for (unsigned i = 0; i < sampleSize; i++) {
+            samplesBuffer[i] = samples[bitReverseInt(i, numOfBits)];
+        }
     }
+
     auto currentBuffer = std::unique_ptr<std::vector<std::complex<double>>>(&samplesBuffer);
     auto nextBuffer = std::unique_ptr<std::vector<std::complex<double>>>(&samples);
+
+
     for (unsigned i = 2; i <= sampleSize; i *= 2) {
-        for (unsigned j = 0; j < sampleSize; ++j) {
-            (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j, isInverse) * (*currentBuffer)[j + i / 2] : oddFactor(i, j, isInverse) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
+        #pragma omp parallel
+        {
+            #pragma omp for schedule(dynamic, 5)
+            for (unsigned j = 0; j < sampleSize; ++j) {
+                (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j, isInverse) * (*currentBuffer)[j + i / 2] : oddFactor(i, j, isInverse) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
+            }
         }
-        if (currentBuffer.get() == &samples) {
-            currentBuffer.release();
-            nextBuffer.release();
-            currentBuffer.reset(&samplesBuffer);
-            nextBuffer.reset(&samples);
-        } else {
-            currentBuffer.release();
-            nextBuffer.release();
-            currentBuffer.reset(&samples);
-            nextBuffer.reset(&samplesBuffer);
-        }
+        currentBuffer.swap(nextBuffer);
     }
+
+
     if (isInverse) {
+        #pragma omp parallel for
         for(auto &c : *nextBuffer) {
             c /= double(sampleSize);
         }
     }
-    return *nextBuffer;
+
+    // It's necessary to release the ownership. Otherwise the returned value can't be assigned to another variable.
+    currentBuffer.release();
+    if (nextBuffer.get() == &samples) {
+        nextBuffer.release();
+        return samples;
+    } else {
+        nextBuffer.release();
+        return samplesBuffer;
+    }
+    //return *nextBuffer;
+}
+
+std::complex<double> preBesselF(const std::complex<double> z, const unsigned numOfPoints, const unsigned inputIndex) {
+    using namespace std::complex_literals;
+    return std::exp(1i * z * std::cos(2 * PI * inputIndex / numOfPoints));
 }
 
 int main()
 {
+    double zr, zi;
+    std::cout << "Please enter the variable z of Bessel function:" << std::endl;
+    std::cin >> zr >> zi;
+    auto z = std::complex<double>(zr, zi);
 
+    unsigned numOfIntervals;
+    std::cout << "Please enter the size of samples n (actual sample's size would be nth power of 2)" << std::endl;
+    std::cin >> numOfIntervals;
+    numOfIntervals = unsigned(std::pow(2, numOfIntervals));
+
+    auto xs = std::vector<std::complex<double>>(numOfIntervals);
+    for (unsigned i = 0; i< xs.capacity(); ++i) {
+        xs[i] = preBesselF(z, numOfIntervals, i);
+        std::cout << xs[i] << std::endl;
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+    auto Xs = cfft(xs, true);
+    auto endTime = std::chrono::steady_clock::now();
+    std::chrono::duration<double> timeCost = endTime - startTime;
+    std::cout << "fft costs " << timeCost.count() << "s" << std::endl;
+    using namespace std::complex_literals;
+    for (unsigned l = 0; l < numOfIntervals; ++l) {
+        std::cout << l << ":" << Xs[l] * std::pow(1i, -l) << std::endl;
+    }
     return 0;
 }
