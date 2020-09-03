@@ -8,17 +8,17 @@
 
 const double PI = std::acos(-1.0);
 
-std::complex<double> oddFactor(const unsigned numOfPoints, const unsigned inputIndex) {
+std::complex<double> oddFactor(const unsigned numOfPoints, const unsigned inputIndex, const bool isInverse) {
     using namespace std::complex_literals;
-    return std::exp(-2.0 * PI * double(inputIndex) * 1i / double(numOfPoints));
+    return std::exp((isInverse ? 1.0 : -1.0) * 2i * PI * double(inputIndex) / double(numOfPoints));
 }
 
-std::complex<double> intermediateNode(const std::vector<std::complex<double>> &bitReversedSamples, unsigned numOfPoints, unsigned inputIndex) {
+std::complex<double> intermediateNode(const std::vector<std::complex<double>> &bitReversedSamples, const unsigned numOfPoints, const unsigned inputIndex, const bool isInverse) {
     if (numOfPoints == 1) {
         return bitReversedSamples[inputIndex];
     }
     auto preNumOfPoints = numOfPoints / 2;
-    return intermediateNode(bitReversedSamples, preNumOfPoints, inputIndex) + oddFactor(numOfPoints, inputIndex) * intermediateNode(bitReversedSamples, preNumOfPoints, inputIndex < preNumOfPoints ? inputIndex + preNumOfPoints : inputIndex - preNumOfPoints);
+    return intermediateNode(bitReversedSamples, preNumOfPoints, inputIndex, isInverse) + oddFactor(numOfPoints, inputIndex, isInverse) * intermediateNode(bitReversedSamples, preNumOfPoints, inputIndex < preNumOfPoints ? inputIndex + preNumOfPoints : inputIndex - preNumOfPoints, isInverse);
 }
 
 const unsigned BIT_REVERSE_TALBE8 [] = {
@@ -48,24 +48,24 @@ unsigned bitReverse32(const unsigned orig) {
     return result;
 }
 
-unsigned bitReverseInt(unsigned orig, unsigned numOfBits) {
+unsigned bitReverseInt(const unsigned orig, const unsigned numOfBits) {
     // numOfBits <= 32
     return bitReverse32(orig) >> (32 - numOfBits);
 }
 
-std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples, bool isInverse) {
-    // TO DO: the bit reversal
-    //from one-point to the whole
-    std::vector<std::complex<double>> samplesBuffer(samples.size());
-    const unsigned numOfBits = unsigned(std::log2(samples.size()));
-    for (unsigned i = 0; i < samples.size(); i++) {
+std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples, const bool isInverse) {
+    //The size should be smaller than 2^32 or the code needs modifying.
+    const unsigned sampleSize = unsigned(samples.size());
+    std::vector<std::complex<double>> samplesBuffer(sampleSize);
+    const unsigned numOfBits = unsigned(std::log2(sampleSize));
+    for (unsigned i = 0; i < sampleSize; i++) {
         samplesBuffer[i] = samples[bitReverseInt(i, numOfBits)];
     }
     auto currentBuffer = std::unique_ptr<std::vector<std::complex<double>>>(&samplesBuffer);
     auto nextBuffer = std::unique_ptr<std::vector<std::complex<double>>>(&samples);
-    for (unsigned i = 2; i <= samples.size(); i *= 2) {
-        for (unsigned j = 0; j < samples.size(); ++j) {
-            (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j) * (*currentBuffer)[j + i / 2] : oddFactor(i, j) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
+    for (unsigned i = 2; i <= sampleSize; i *= 2) {
+        for (unsigned j = 0; j < sampleSize; ++j) {
+            (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j, isInverse) * (*currentBuffer)[j + i / 2] : oddFactor(i, j, isInverse) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
         }
         if (currentBuffer.get() == &samples) {
             currentBuffer.release();
@@ -77,6 +77,11 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
             nextBuffer.release();
             currentBuffer.reset(&samples);
             nextBuffer.reset(&samplesBuffer);
+        }
+    }
+    if (isInverse) {
+        for(auto &c : *nextBuffer) {
+            c /= double(sampleSize);
         }
     }
     return *nextBuffer;
