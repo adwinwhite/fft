@@ -2,10 +2,13 @@
 #include<vector>
 #include<tuple>
 #include<complex>
+#include<numeric>
 #include<cmath>
 #include<memory>
 #include<bitset>
 #include<chrono>
+//#include"matplotlibcpp.h"
+
 
 const double PI = std::acos(-1.0);
 
@@ -66,7 +69,7 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
 
     #pragma omp parallel
     {
-        #pragma omp for schedule(dynamic, 5)
+        #pragma omp for schedule(dynamic, 4)
         for (unsigned i = 0; i < sampleSize; i++) {
             samplesBuffer[i] = samples[bitReverseInt(i, numOfBits)];
         }
@@ -79,7 +82,7 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
     for (unsigned i = 2; i <= sampleSize; i *= 2) {
         #pragma omp parallel
         {
-            #pragma omp for schedule(dynamic, 5)
+            #pragma omp for schedule(dynamic, 4)
             for (unsigned j = 0; j < sampleSize; ++j) {
                 (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j, isInverse) * (*currentBuffer)[j + i / 2] : oddFactor(i, j, isInverse) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
             }
@@ -90,8 +93,8 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
 
     if (isInverse) {
         #pragma omp parallel for
-        for(auto &c : *nextBuffer) {
-            c /= double(sampleSize);
+        for(unsigned i = 0; i < sampleSize; ++i) {
+            (*nextBuffer)[i] /= double(sampleSize);
         }
     }
 
@@ -112,32 +115,34 @@ std::complex<double> preBesselF(const std::complex<double> z, const unsigned num
     return std::exp(1i * z * std::cos(2 * PI * inputIndex / numOfPoints));
 }
 
+std::vector<std::complex<double>> bessel(const std::complex<double> z, const unsigned order) {
+    if ((order & (order - 1)) != 0) {
+        throw "order must be power of 2";
+    }
+    auto xs = std::vector<std::complex<double>>(order);
+    for (unsigned i = 0; i< xs.capacity(); ++i) {
+        xs[i] = preBesselF(z, order, i);
+    }
+    auto Xs = cfft(xs, true);
+    using namespace std::complex_literals;
+    for (unsigned l = 0; l < order; ++l) {
+        Xs[l] *= std::pow(1i, -l);
+    }
+    return Xs;
+}
+
 int main()
 {
-    double zr, zi;
-    std::cout << "Please enter the variable z of Bessel function:" << std::endl;
-    std::cin >> zr >> zi;
-    auto z = std::complex<double>(zr, zi);
-
-    unsigned numOfIntervals;
-    std::cout << "Please enter the size of samples n (actual sample's size would be nth power of 2)" << std::endl;
-    std::cin >> numOfIntervals;
-    numOfIntervals = unsigned(std::pow(2, numOfIntervals));
-
-    auto xs = std::vector<std::complex<double>>(numOfIntervals);
-    for (unsigned i = 0; i< xs.capacity(); ++i) {
-        xs[i] = preBesselF(z, numOfIntervals, i);
-        std::cout << xs[i] << std::endl;
-    }
-
-    auto startTime = std::chrono::steady_clock::now();
-    auto Xs = cfft(xs, true);
-    auto endTime = std::chrono::steady_clock::now();
-    std::chrono::duration<double> timeCost = endTime - startTime;
-    std::cout << "fft costs " << timeCost.count() << "s" << std::endl;
-    using namespace std::complex_literals;
-    for (unsigned l = 0; l < numOfIntervals; ++l) {
-        std::cout << l << ":" << Xs[l] * std::pow(1i, -l) << std::endl;
+    const unsigned ORDER = unsigned(std::pow(2, 16));
+    std::vector<unsigned> xs(ORDER);
+    std::iota(xs.begin(), xs.end(), 0);
+    for (unsigned i = 0; i < 3; ++i) {
+        auto ys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
+        std::cout << "First 10 terms of J(" << std::pow(10, i) << ", n)" << std::endl;
+        std::cout << "n : J" << std::endl;
+        for (unsigned j = 0; j < 10; ++j) {
+            std::cout << j << " : " << ys[j] << std::endl;
+        }
     }
     return 0;
 }
