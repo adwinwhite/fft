@@ -5,7 +5,8 @@
 #include<string>
 #include"matplotlibcpp.h"
 
-
+const long double EPSILON = std::pow(2, -52);
+const long double FACTOR = std::pow(2, 52);
 
 std::vector<long double> besselM(const long double x, const unsigned m) {
     std::vector<long double> ys;
@@ -15,16 +16,17 @@ std::vector<long double> besselM(const long double x, const unsigned m) {
     while (i < m) {
         long double y = 2 * (m - i) * ys[i] / x - ys[i-1];
         //if y is smaller than the precision of the machine.
-        if (std::isnan(y)) {
-            y = 0;
+        if (y < EPSILON) {
+            y *= FACTOR;
+            for (unsigned j = 0; j <= i; ++j) {
+                ys[j] *= FACTOR;
+            }
         }
         ys.push_back(y);
         ++i;
     }
 
-    /* Normalize the values by the sum identity.
-     * It's apparent that y cannot be larger than 1/precision = 2^52.
-     */
+    // Normalize the values by the sum identity.
     long double sum = 0;
     for (auto y : ys) {
         sum += y*y;
