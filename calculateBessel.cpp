@@ -3,6 +3,7 @@
 #include<cmath>
 #include<numeric>
 #include<string>
+#include<algorithm>
 #include"matplotlibcpp.h"
 
 const long double EPSILON = std::pow(2, -52);
@@ -36,6 +37,7 @@ std::vector<long double> besselM(const long double x, const unsigned m) {
     for (auto &y : ys) {
         y *= factor;
     }
+    std::reverse(ys.begin(), ys.end());
     return ys;
 }
 
@@ -54,10 +56,10 @@ int main() {
         std::cout << "First ten terms of J(" << std::pow(10, i) << ", n)" << std::endl;
         std::cout << "n : J" << std::endl;
         for (unsigned j = 0; j < 10; ++j) {
-            std::cout << j << " : " << ys[ORDER - j] << std::endl;
+            std::cout << j << " : " << ys[j] << std::endl;
         }
     }
-    plt::xlim(0, int(ORDER / 2));
+    plt::xlim(0, 32);
     plt::legend();
     plt::show();
     return 0;
