@@ -6,38 +6,44 @@
 #include<algorithm>
 #include"matplotlibcpp.h"
 
-const long double EPSILON = std::pow(2, -52);
-const long double FACTOR = std::pow(2, 52);
+const double EPSILON = std::pow(2, -52);
+const double FACTOR = std::pow(2, 52);
 
-std::vector<long double> besselM(const long double x, const unsigned m) {
-    std::vector<long double> ys;
-    ys.push_back(0);
-    ys.push_back(1);
-    unsigned i = 1;
-    while (i < m) {
-        long double y = 2 * (m - i) * ys[i] / x - ys[i-1];
+std::vector<double> besselM(const double x, const unsigned m) {
+    auto ys = std::vector<double>(m + 1);
+    ys[m] = 0;
+    ys[m - 1] = 1;
+    const double yrcp = 2.0 / x;
+    for (unsigned i = m - 1; i > 0; --i){
+        //results differ from the answers by a factor which is kind of inversely proportional to x; the sum identity implementation may have some problem.
+        double y = double(i) * ys[i] * yrcp - ys[i + 1];
         //if y is smaller than the precision of the machine.
         if (y < EPSILON) {
+            //std::cout << "reached the smallest precision" << std::endl;
             y *= FACTOR;
-            for (unsigned j = 0; j <= i; ++j) {
+            for (unsigned j = i; j < m; ++j) {
                 ys[j] *= FACTOR;
             }
+        } else if (y > FACTOR) {
+            //std::cout << "reached the upper bound" << std::endl;
+            y *= EPSILON;
+            for (unsigned j = i; j < m; ++j) {
+                ys[j] *= EPSILON;
+            }
         }
-        ys.push_back(y);
-        ++i;
+        ys[i - 1] = y;
     }
 
     // Normalize the values by the sum identity.
-    long double sum = 0;
+    double sum = 0;
     for (auto y : ys) {
         sum += y*y;
     }
-    sum = sum * 2 - ys.back();
-    long double factor = std::sqrt(1 / sum);
+    sum = sum * 2.0 - ys[0] * ys[0]; // forgot to square ys[0]. ಥ_ಥ
+    const double factor = 1.0 / std::sqrt(sum);
     for (auto &y : ys) {
         y *= factor;
     }
-    std::reverse(ys.begin(), ys.end());
     return ys;
 }
 
@@ -45,10 +51,10 @@ std::vector<long double> besselM(const long double x, const unsigned m) {
     
 int main() {
     namespace plt = matplotlibcpp;
-    constexpr unsigned ORDER = 512;
-    auto xs = std::vector<long double>(ORDER + 1);
+    constexpr unsigned ORDER = 2048;
+    auto xs = std::vector<double>(ORDER + 1);
     for (unsigned i = 0; i < ORDER; ++i) {
-        xs[i] = (long double)(i);
+        xs[i] = double(i);
     }
     for (unsigned i = 0; i < 3; ++i) {
         auto ys = besselM(std::pow(10, i), ORDER);
