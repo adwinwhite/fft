@@ -9,20 +9,20 @@ double integrand(const double x) {
     return 4.0 / (1.0 + x * x);
 }
 
-double trapezoidalIntegral(const unsigned n) {
+double trapezoidalIntegral(const size_t n) {
     const double stepsize = 1.0 / double(n);
     double integral = 0;
-    for (unsigned i = 0; i <= n; ++i) {
+    for (size_t i = 0; i <= n; ++i) {
         integral += integrand(double(i) * stepsize);
     }
     integral = (2.0 * integral - 6) / 2.0 / double(n);
     return integral;
 }
 
-double simpsonIntegral(const unsigned n) {
+double simpsonIntegral(const size_t n) {
     const double stepsize = 1.0 / 2.0 / double(n);
     double integral = 0;
-    for (unsigned i = 0; i < n; ++i) {
+    for (size_t i = 0; i < n; ++i) {
         integral += integrand(2.0 * double(i) * stepsize) + 4.0 * integrand((2.0 * double(i) + 1) * stepsize) + integrand((2.0 * double(i) + 2) * stepsize);
     }
     integral /= 6.0 * double(n);
@@ -40,11 +40,11 @@ double get_random()
     return dis(e);
 }
 
-double montecarloIntegral(const unsigned n) {
+double montecarloIntegral(const size_t n) {
     std::default_random_engine e;
     std::uniform_real_distribution<double> dis(-1, 1); 
-    unsigned numOfPointsInside = 0;
-    for (unsigned i = 0; i < n; ++i) {
+    size_t numOfPointsInside = 0;
+    for (size_t i = 0; i < n; ++i) {
         if (inUnitCircle(dis(e), dis(e))) {
             ++numOfPointsInside;
         }
@@ -60,10 +60,10 @@ int main() {
     std::cout << "num of partitions : relative error" << std::endl;
     auto xs1 = std::vector<double>(20);
     auto ys1 = std::vector<double>(20);
-    for (unsigned i = 80; i < 100; ++i) {
+    for (size_t i = 80; i < 100; ++i) {
         double y = std::abs(trapezoidalIntegral(i) - PI) / PI;
-        ys1.push_back(y);
-        xs1.push_back(i);
+        ys1[i - 80] = y;
+        xs1[i - 80] = double(i);
         std::cout << i << " : " << y << std::endl;
     }
     plt::subplot(3, 1, 1);
@@ -75,10 +75,10 @@ int main() {
     std::cout << "num of partitions : relative error" << std::endl;
     auto xs2 = std::vector<double>(20);
     auto ys2 = std::vector<double>(20);
-    for (unsigned i = 80; i < 100; ++i) {
+    for (size_t i = 80; i < 100; ++i) {
         double y = std::abs(simpsonIntegral(i) - PI) / PI;
-        ys2.push_back(y);
-        xs2.push_back(i);
+        ys2[i - 80] = y;
+        xs2[i - 80] = double(i);
         std::cout << i << " : " << y << std::endl;
     }
     plt::subplot(3, 1, 2);
@@ -90,10 +90,10 @@ int main() {
     std::cout << "num of points : relative error" << std::endl;
     auto xs3 = std::vector<double>(20);
     auto ys3 = std::vector<double>(20);
-    for (unsigned i = 1090; i < 1100; ++i) {
+    for (size_t i = 1090; i < 1110; ++i) {
         double y = std::abs(montecarloIntegral(i) - PI) / PI;
-        ys3.push_back(y);
-        xs3.push_back(i);
+        ys3[i - 1090] = y;
+        xs3[i - 1090] = double(i);
         std::cout << i << " : " << y << std::endl;
     }
     plt::subplot(3, 1, 3);

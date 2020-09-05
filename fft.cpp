@@ -13,13 +13,13 @@
 
 const double PI = std::acos(-1.0);
 
-std::complex<double> oddFactor(const unsigned numOfPoints, const unsigned inputIndex, const bool isInverse) {
+std::complex<double> oddFactor(const size_t numOfPoints, const size_t inputIndex, const bool isInverse) {
     using namespace std::complex_literals;
     return std::exp((isInverse ? 1.0 : -1.0) * 2i * PI * double(inputIndex) / double(numOfPoints));
 }
 
 
-const unsigned BIT_REVERSE_TALBE8 [] = {
+const size_t BIT_REVERSE_TALBE8 [] = {
     0,  128, 64, 192, 32, 160,  96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
     8,  136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248,
     4,  132, 68, 196, 36, 164, 100, 228, 20, 148, 84, 212, 52, 180, 116, 244,
@@ -38,15 +38,15 @@ const unsigned BIT_REVERSE_TALBE8 [] = {
     15, 143, 79, 207, 47, 175, 111, 239, 31, 159, 95, 223, 63, 191, 127, 255
 };
 
-unsigned bitReverse32(const unsigned orig) {
-    unsigned result = 0;
-    for (unsigned i = 0; i < 4; ++i) {
+size_t bitReverse32(const size_t orig) {
+    size_t result = 0;
+    for (size_t i = 0; i < 4; ++i) {
         result = result | (BIT_REVERSE_TALBE8[((orig << (i * 8)) >> 24)] << (i * 8));
     }
     return result;
 }
 
-unsigned bitReverseInt(const unsigned orig, const unsigned numOfBits) {
+size_t bitReverseInt(const size_t orig, const size_t numOfBits) {
     if (numOfBits > 32) {
         std::cerr << "The size of bits to be reversed should be smaller than 32" << std::endl;
         std::exit(-1);
@@ -58,14 +58,14 @@ unsigned bitReverseInt(const unsigned orig, const unsigned numOfBits) {
  *  The size should be power of 2.
  */
 std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples, const bool isInverse) {
-    const unsigned sampleSize = unsigned(samples.size());
+    const size_t sampleSize = size_t(samples.size());
     std::vector<std::complex<double>> samplesBuffer(sampleSize);
-    const unsigned numOfBits = unsigned(std::log2(sampleSize));
+    const size_t numOfBits = size_t(std::log2(sampleSize));
 
     #pragma omp parallel
     {
         #pragma omp for schedule(dynamic, 4)
-        for (unsigned i = 0; i < sampleSize; i++) {
+        for (size_t i = 0; i < sampleSize; i++) {
             samplesBuffer[i] = samples[bitReverseInt(i, numOfBits)];
         }
     }
@@ -74,11 +74,11 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
     auto nextBuffer = std::unique_ptr<std::vector<std::complex<double>>>(&samples);
 
 
-    for (unsigned i = 2; i <= sampleSize; i *= 2) {
+    for (size_t i = 2; i <= sampleSize; i *= 2) {
         #pragma omp parallel
         {
             #pragma omp for schedule(dynamic, 4)
-            for (unsigned j = 0; j < sampleSize; ++j) {
+            for (size_t j = 0; j < sampleSize; ++j) {
                 (*nextBuffer)[j] = j % i < i / 2 ? (*currentBuffer)[j] + oddFactor(i, j, isInverse) * (*currentBuffer)[j + i / 2] : oddFactor(i, j, isInverse) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
             }
         }
@@ -89,7 +89,7 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
     if (isInverse) {
         //"parallel for" is not compatible with "for (auto x : xs)".
         #pragma omp parallel for
-        for(unsigned i = 0; i < sampleSize; ++i) {
+        for(size_t i = 0; i < sampleSize; ++i) {
             (*nextBuffer)[i] /= double(sampleSize);
         }
     }
@@ -106,23 +106,23 @@ std::vector<std::complex<double>> cfft(std::vector<std::complex<double>> samples
     //return *nextBuffer;
 }
 
-std::complex<double> preBesselF(const std::complex<double> z, const unsigned numOfPoints, const unsigned inputIndex) {
+std::complex<double> preBesselF(const std::complex<double> z, const size_t numOfPoints, const size_t inputIndex) {
     using namespace std::complex_literals;
-    return std::exp(1i * z * std::cos(2 * PI * inputIndex / numOfPoints));
+    return std::exp(1i * z * std::cos(2 * PI * double(inputIndex) / double(numOfPoints)));
 }
 
-std::vector<std::complex<double>> bessel(const std::complex<double> z, const unsigned order) {
+std::vector<std::complex<double>> bessel(const std::complex<double> z, const size_t order) {
     if ((order & (order - 1)) != 0) {
         std::cerr << "order must be power of 2" << std::endl;
         std::exit(-1);
     }
     auto xs = std::vector<std::complex<double>>(order);
-    for (unsigned i = 0; i< xs.capacity(); ++i) {
+    for (size_t i = 0; i< xs.capacity(); ++i) {
         xs[i] = preBesselF(z, order, i);
     }
     auto Xs = cfft(xs, true);
     using namespace std::complex_literals;
-    for (unsigned l = 0; l < order; ++l) {
+    for (size_t l = 0; l < order; ++l) {
         Xs[l] *= std::pow(1i, -l) * 2.0;
     }
     return Xs;
@@ -132,19 +132,19 @@ std::vector<std::complex<double>> bessel(const std::complex<double> z, const uns
 int main()
 {
     namespace plt = matplotlibcpp;
-    const unsigned ORDER = unsigned(std::pow(2, 16));
+    const size_t ORDER = size_t(std::pow(2, 16));
     std::vector<double> xs(ORDER);
     std::iota(xs.begin(), xs.end(), 0);
-    for (unsigned i = 0; i < 3; ++i) {
+    for (size_t i = 0; i < 3; ++i) {
         auto ys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
         auto ysr = std::vector<double>(ORDER);
-        for (unsigned j = 0; j < ORDER; ++j) {
+        for (size_t j = 0; j < ORDER; ++j) {
             ysr[j] = ys[j].real();
         }
         plt::named_plot(std::to_string(std::pow(10, i)), xs, ysr);
         std::cout << "First ten terms of J(" << std::pow(10, i) << ", n)" << std::endl;
         std::cout << "n : J" << std::endl;
-        for (unsigned j = 0; j < 10; ++j) {
+        for (size_t j = 0; j < 10; ++j) {
             std::cout << j << " : " << ys[j] << std::endl;
         }
     }
