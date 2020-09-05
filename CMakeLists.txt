@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 add_executable(fft fft.cpp)
-target_compile_options(fft PRIVATE -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -O3 -fopenmp)
+target_compile_options(fft PRIVATE -O3 -fopenmp -ffast-math -march=native -mtune=native)
 target_link_options(fft PRIVATE -lgomp -lfftw3_omp -lfftw3 -lm)
 
 add_executable(calculateBessel calculateBessel.cpp)
