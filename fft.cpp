@@ -23,6 +23,11 @@ std::complex<double> oddFactor(const double& numOfPointsReciprocal, const unsign
     return std::exp(inverseFactor * 2i * PI * double(inputIndex) * numOfPointsReciprocal);
 }
 
+std::complex<double> oddFactor(const unsigned& numOfPoints, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
+    using namespace std::complex_literals;
+    return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
+}
+
 double* oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
     double* result = (double*)malloc(sizeof(mcomplex));
     result[0] = std::cos(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
@@ -84,7 +89,7 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
 
 
 
-    #pragma omp parallel for schedule(static, sampleSize / omp_get_max_threads() / 4)
+    #pragma omp parallel for schedule(static)
     for (unsigned i = 0; i < sampleSize; ++i) {
         samplesBuffer1[i] = samples[bitReverseInt(i, numOfBits)];
     }
@@ -94,12 +99,12 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
     double inverseFactor = isInverse ? -1.0 : 1.0;
 
     for (unsigned i = 1; i < sampleSize; i *= 2) {
-        const double numOfPointsReciprocal = 1.0 / double(i);
-        #pragma omp parallel for schedule(static, sampleSize / omp_get_max_threads() / 4)
+        const double numOfPointsReciprocal = 1.0 / double(i * 2);
+        #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < sampleSize; ++j) {
-            (*nextBuffer)[j] = j % i < i / 2 ?
-                               (*currentBuffer)[j] + oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j + i / 2] :
-                               oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j] + (*currentBuffer)[j - i / 2];
+            (*nextBuffer)[j] = j % (i * 2) < i ?
+                               (*currentBuffer)[j] + oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j + i] :
+                               oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j] + (*currentBuffer)[j - i];
         }
         std::swap(currentBuffer, nextBuffer);
     }
@@ -108,13 +113,92 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
     if (isInverse) {
         //"parallel for" is not compatible with "for (auto x : xs)".
         const double sampleSizeReciprocal = 1.0 / double(sampleSize);
-        #pragma omp parallel for schedule(static, sampleSize / omp_get_max_threads() / 4)
+        #pragma omp parallel for schedule(static)
         for(unsigned i = 0; i < sampleSize; ++i) {
             (*nextBuffer)[i] *= sampleSizeReciprocal;
         }
     }
 
     return *nextBuffer;
+}
+
+std::vector<std::complex<double>> cfftDynamic(const std::vector<std::complex<double>>& samples, const bool& isInverse) {
+    omp_set_num_threads(omp_get_max_threads());
+    const unsigned sampleSize = unsigned(samples.size());
+    auto samplesBuffer1 = std::vector<std::complex<double>>(sampleSize);
+    auto samplesBuffer2 = std::vector<std::complex<double>>(sampleSize);
+    const unsigned numOfBits = unsigned(std::log2(sampleSize));
+
+
+
+    #pragma omp parallel for schedule(dynamic, sampleSize / omp_get_max_threads() / 4)
+    for (unsigned i = 0; i < sampleSize; ++i) {
+        samplesBuffer1[i] = samples[bitReverseInt(i, numOfBits)];
+    }
+
+    auto currentBuffer = &samplesBuffer1;
+    auto nextBuffer = &samplesBuffer2;
+    double inverseFactor = isInverse ? -1.0 : 1.0;
+
+    for (unsigned i = 1; i < sampleSize; i *= 2) {
+        const double numOfPointsReciprocal = 1.0 / double(i * 2);
+        #pragma omp parallel for schedule(dynamic, sampleSize / omp_get_max_threads() / 4)
+        for (unsigned j = 0; j < sampleSize; ++j) {
+            (*nextBuffer)[j] = j % (i * 2) < i ?
+                               (*currentBuffer)[j] + oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j + i] :
+                               oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j] + (*currentBuffer)[j - i];
+        }
+        std::swap(currentBuffer, nextBuffer);
+    }
+
+
+    if (isInverse) {
+        //"parallel for" is not compatible with "for (auto x : xs)".
+        const double sampleSizeReciprocal = 1.0 / double(sampleSize);
+        #pragma omp parallel for schedule(dynamic, sampleSize / omp_get_max_threads() / 4)
+        for(unsigned i = 0; i < sampleSize; ++i) {
+            (*nextBuffer)[i] *= sampleSizeReciprocal;
+        }
+    }
+
+    return *nextBuffer;
+}
+
+std::vector<std::complex<double>> cfftNoWait(const std::vector<std::complex<double>>& samples, const bool& isInverse) {
+    omp_set_num_threads(omp_get_max_threads());
+    const unsigned sampleSize = unsigned(samples.size());
+    const unsigned numOfBits = unsigned(std::log2(sampleSize));
+    auto sampleBuffers = std::vector<std::vector<std::complex<double>>>(numOfBits + 1, std::vector<std::complex<double>>(sampleSize));
+
+
+
+    #pragma omp parallel for schedule(static)
+    for (unsigned i = 0; i < sampleSize; ++i) {
+        sampleBuffers[0][i] = samples[bitReverseInt(i, numOfBits)];
+    }
+
+    double inverseFactor = isInverse ? -1.0 : 1.0;
+
+    #pragma omp parallel for schedule(dynamic, sampleSize / omp_get_max_threads()) collapse(2)
+    for (unsigned i = 1; i <= numOfBits; ++i) {
+        for (unsigned j = 0; j < sampleSize; ++j) {
+            sampleBuffers[i][j] = j % (1 << i) < (1 << (i - 1)) ?
+                               sampleBuffers[i - 1][j] + oddFactor(unsigned(1 << i), j, inverseFactor) * sampleBuffers[i - 1][j + (1 << (i - 1))] :
+                               oddFactor(unsigned(1 << i), j, inverseFactor) * sampleBuffers[i - 1][j] + sampleBuffers[i - 1][j - (1 << (i - 1))];
+        }
+    }
+
+
+    if (isInverse) {
+        //"parallel for" is not compatible with "for (auto x : xs)".
+        const double sampleSizeReciprocal = 1.0 / double(sampleSize);
+        #pragma omp parallel for schedule(static)
+        for(unsigned i = 0; i < sampleSize; ++i) {
+            sampleBuffers[numOfBits][i] *= sampleSizeReciprocal;
+        }
+    }
+
+    return sampleBuffers[numOfBits];
 }
 
 mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse) {
@@ -125,7 +209,7 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
 
 
 
-    #pragma omp parallel for schedule(static, order / omp_get_max_threads() / 4)
+    #pragma omp parallel for schedule(static)
     for (unsigned i = 0; i < order; ++i) {
         sampleBuffer1[i][0] = samples[bitReverseInt(i, numOfBits)][0];
         sampleBuffer1[i][1] = samples[bitReverseInt(i, numOfBits)][1];
@@ -136,16 +220,16 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
     double inverseFactor = isInverse ? -1.0 : 1.0;
 
     for (unsigned i = 1; i < order; i *= 2) {
-        const double numOfPointsReciprocal = 1.0 / double(i);
-        #pragma omp parallel for schedule(static, order / omp_get_max_threads() / 4)
+        const double numOfPointsReciprocal = 1.0 / double(i * 2);
+        #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < order; ++j) {
             auto oddFct = oddFactorM(numOfPointsReciprocal, j, inverseFactor);
-            if (j % i < (i / 2)) {
-                nextBuffer[j][0] = currentBuffer[j][0] + oddFct[0] * currentBuffer[j + i / 2][0] - oddFct[1] * currentBuffer[j + i / 2][1];
-                nextBuffer[j][1] = currentBuffer[j][1] + oddFct[0] * currentBuffer[j + i / 2][1] + oddFct[1] * currentBuffer[j + i / 2][0];
+            if (j % (i * 2) < i) {
+                nextBuffer[j][0] = currentBuffer[j][0] + oddFct[0] * currentBuffer[j + i][0] - oddFct[1] * currentBuffer[j + i][1];
+                nextBuffer[j][1] = currentBuffer[j][1] + oddFct[0] * currentBuffer[j + i][1] + oddFct[1] * currentBuffer[j + i][0];
             } else {
-                nextBuffer[j][0] = currentBuffer[j - i / 2][0] + oddFct[0] * currentBuffer[j][0] - oddFct[1] * currentBuffer[j][1];
-                nextBuffer[j][1] = currentBuffer[j - i / 2][1] + oddFct[0] * currentBuffer[j][1] + oddFct[1] * currentBuffer[j][0];
+                nextBuffer[j][0] = currentBuffer[j - i][0] + oddFct[0] * currentBuffer[j][0] - oddFct[1] * currentBuffer[j][1];
+                nextBuffer[j][1] = currentBuffer[j - i][1] + oddFct[0] * currentBuffer[j][1] + oddFct[1] * currentBuffer[j][0];
             }
             free(oddFct);
         }
@@ -156,13 +240,13 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
     if (isInverse) {
         //"parallel for" is not compatible with "for (auto x : xs)".
         const double sampleSizeReciprocal = 1.0 / double(order);
-        #pragma omp parallel for schedule(static, order / omp_get_max_threads() / 4)
+        #pragma omp parallel for schedule(static)
         for(unsigned i = 0; i < order; ++i) {
             nextBuffer[i][0] *= sampleSizeReciprocal;
             nextBuffer[i][1] *= sampleSizeReciprocal;
         }
     }
-
+    free(currentBuffer);
     return nextBuffer;
 }
 
@@ -203,6 +287,27 @@ std::vector<std::complex<double>> besselM(const std::complex<double>& z, const u
     return Xsv;
 }
 
+std::vector<std::complex<double>> besselN(const std::complex<double>& z, const unsigned& order) {
+    if ((order & (order - 1)) != 0) {
+        std::cerr << "order must be power of 2" << std::endl;
+        std::exit(-1);
+    }
+    auto xs = std::vector<std::complex<double>>(order);
+    for (unsigned i = 0; i < xs.capacity(); ++i) {
+        xs[i] = preBesselF(z, order, i);
+    }
+    auto begin = std::chrono::steady_clock::now();
+    auto Xs = cfftNoWait(xs, true);
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> timeCost = end - begin;
+    std::cout << "minn : " << z << " : " << timeCost.count() << "s." << std::endl;
+    using namespace std::complex_literals;
+    for (unsigned l = 0; l < order; ++l) {
+        Xs[l] *= std::pow(1i, -l) * 2.0;
+    }
+    return Xs;
+}
+
 std::vector<std::complex<double>> bessel(const std::complex<double>& z, const unsigned& order) {
     if ((order & (order - 1)) != 0) {
         std::cerr << "order must be power of 2" << std::endl;
@@ -217,6 +322,27 @@ std::vector<std::complex<double>> bessel(const std::complex<double>& z, const un
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
     std::cout << "mine : " << z << " : " << timeCost.count() << "s." << std::endl;
+    using namespace std::complex_literals;
+    for (unsigned l = 0; l < order; ++l) {
+        Xs[l] *= std::pow(1i, -l) * 2.0;
+    }
+    return Xs;
+}
+
+std::vector<std::complex<double>> besselD(const std::complex<double>& z, const unsigned& order) {
+    if ((order & (order - 1)) != 0) {
+        std::cerr << "order must be power of 2" << std::endl;
+        std::exit(-1);
+    }
+    auto xs = std::vector<std::complex<double>>(order);
+    for (unsigned i = 0; i < xs.capacity(); ++i) {
+        xs[i] = preBesselF(z, order, i);
+    }
+    auto begin = std::chrono::steady_clock::now();
+    auto Xs = cfftDynamic(xs, true);
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> timeCost = end - begin;
+    std::cout << "mind : " << z << " : " << timeCost.count() << "s." << std::endl;
     using namespace std::complex_literals;
     for (unsigned l = 0; l < order; ++l) {
         Xs[l] *= std::pow(1i, -l) * 2.0;
@@ -264,11 +390,11 @@ std::vector<std::complex<double>> besselW(const std::complex<double>& z, const u
 int main()
 {
     namespace plt = matplotlibcpp;
-    const unsigned ORDER = unsigned(std::pow(2, 24));
-    std::vector<double> xs(ORDER);
-    std::iota(xs.begin(), xs.end(), 0);
+    const unsigned ORDER = unsigned(std::pow(2, 20));
+//    std::vector<double> xs(ORDER);
+//    std::iota(xs.begin(), xs.end(), 0);
 //    for (unsigned i = 0; i < 3; ++i) {
-//        auto ys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
+//        auto ys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
 //        auto ysr = std::vector<double>(ORDER);
 //        for (unsigned j = 0; j < ORDER; ++j) {
 //            ysr[j] = ys[j].real();
@@ -287,7 +413,9 @@ int main()
     for (unsigned i = 0; i < 3; ++i) {
         auto fftwys = besselW(std::complex<double>(std::pow(10, i), 0), ORDER);
         auto myys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
-        auto mycys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
+        //auto myysn = besselN(std::complex<double>(std::pow(10, i), 0), ORDER);
+        auto myysd = besselD(std::complex<double>(std::pow(10, i), 0), ORDER);
+        //auto mycys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
     }
     return 0;
 }
