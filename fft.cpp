@@ -471,7 +471,7 @@ std::vector<std::complex<double>> besselW(const std::complex<double>& z, const u
 int main()
 {
     namespace plt = matplotlibcpp;
-    const unsigned ORDER = unsigned(std::pow(2, 20));
+    const unsigned ORDER = unsigned(std::pow(2, 24));
 //    std::vector<double> xs(ORDER);
 //    std::iota(xs.begin(), xs.end(), 0);
 //    for (unsigned i = 0; i < 3; ++i) {
@@ -496,7 +496,7 @@ int main()
         auto myys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
         //auto myysn = besselN(std::complex<double>(std::pow(10, i), 0), ORDER);
         auto myysd = besselD(std::complex<double>(std::pow(10, i), 0), ORDER);
-        //auto mycys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
+        auto mycys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
         //auto mycnys = besselMN(std::complex<double>(std::pow(10, i), 0), ORDER);
     }
     return 0;

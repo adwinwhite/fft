@@ -10,8 +10,12 @@ add_executable(fft fft.cpp)
 target_compile_options(fft PRIVATE -O3 -fopenmp -ffast-math -march=native -mtune=native)
 target_link_options(fft PRIVATE -lgomp -lfftw3_omp -lfftw3 -lm)
 
+
+
 add_executable(calculateBessel calculateBessel.cpp)
 add_executable(calculatePi calculatePi.cpp)
+target_compile_options(calculatePi PRIVATE -O3 -fopenmp  -march=native -mtune=native)
+target_link_options(calculatePi PRIVATE -lgomp)
 
 find_package(Python3 COMPONENTS Development NumPy)
 target_include_directories(fft PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
