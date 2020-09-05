@@ -10,7 +10,7 @@ const double EPSILON = std::pow(2, -52);
 const double FACTOR = std::pow(2, 52);
 
 
-std::tuple<std::vector<double>, size_t> besselM(const double x, const size_t m) {
+std::vector<double> besselM(const double x, const size_t m) {
     auto ys = std::vector<double>(m + 1, 0);
     ys[m] = 0;
     ys[m - 1] = 1;
@@ -44,10 +44,9 @@ std::tuple<std::vector<double>, size_t> besselM(const double x, const size_t m) 
             break;
         }
     }
-    //valarray cannot be used with matplotlib so we stick to vector.
-    auto validYS = std::vector<double>(ys.begin(), ys.begin() + long(sliceEndIndex));
-    return std::make_tuple(validYS, sliceEndIndex);
-    //indices are exclusive.
+    ys.resize(sliceEndIndex);
+    return ys;
+    //sliceEndIndex is exclusive.
 }
 
 
@@ -57,10 +56,8 @@ int main() {
     constexpr size_t ORDER = 512;
     constexpr size_t EXAMPLE_NUM = 3;
     for (size_t i = 0; i < EXAMPLE_NUM; ++i) {
-        std::vector<double> ys;
-        size_t endIndex;
-        std::tie(ys, endIndex) = besselM(std::pow(10, i), ORDER);
-        auto xs = std::vector<double>(endIndex);
+        auto ys = besselM(std::pow(10, i), ORDER);
+        auto xs = std::vector<double>(ys.size());
         std::iota(xs.begin(), xs.end(), 0);
         plt::subplot(long(EXAMPLE_NUM), 1, long(i + 1));
         plt::plot(xs, ys);
