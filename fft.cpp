@@ -28,6 +28,7 @@ std::complex<double> oddFactor(const unsigned& numOfPoints, const unsigned& inpu
     return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
 }
 
+//slower than c++ version;
 double* oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
     double* result = (double*)malloc(sizeof(mcomplex));
     result[0] = std::cos(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
@@ -35,7 +36,7 @@ double* oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputInd
     return result;
 }
 
-//do not allocate memory every time
+//do not allocate memory every time. tested: slower than previous one.
 void oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputIndex, mcomplex* oddFactors, const unsigned& threadIndex, const double& inverseFactor = -1.0) {
     oddFactors[threadIndex][0] = std::cos(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
     oddFactors[threadIndex][1] = inverseFactor * std::sin(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
@@ -87,15 +88,15 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
  *  None of above optimizations is done;
  */
 std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& samples, const bool& isInverse) {
-    auto begin = std::chrono::steady_clock::now();
+//    auto begin = std::chrono::steady_clock::now();
     omp_set_num_threads(omp_get_max_threads());
     const unsigned sampleSize = unsigned(samples.size());
     auto samplesBuffer1 = std::vector<std::complex<double>>(sampleSize);
     auto samplesBuffer2 = std::vector<std::complex<double>>(sampleSize);
     const unsigned numOfBits = unsigned(std::log2(sampleSize));
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "init_mine : " << timeCost.count() << "s." << std::endl;
+//    auto end = std::chrono::steady_clock::now();
+//    std::chrono::duration<double> timeCost = end - begin;
+//    std::cout << "init_mine : " << timeCost.count() << "s." << std::endl;
 
 
 
@@ -110,7 +111,7 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
 
     for (unsigned i = 1; i < sampleSize; i *= 2) {
         const double numOfPointsReciprocal = 1.0 / double(i * 2);
-        begin = std::chrono::steady_clock::now();
+//        begin = std::chrono::steady_clock::now();
         #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < sampleSize; ++j) {
             (*nextBuffer)[j] = j % (i * 2) < i ?
@@ -118,9 +119,9 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
                                oddFactor(numOfPointsReciprocal, j, inverseFactor) * (*currentBuffer)[j] + (*currentBuffer)[j - i];
         }
         std::swap(currentBuffer, nextBuffer);
-        end = std::chrono::steady_clock::now();
-        timeCost = end - begin;
-        std::cout << "cal_mine : " << unsigned(std::log2(i)) << " : " << timeCost.count() << "s." << std::endl;
+//        end = std::chrono::steady_clock::now();
+//        timeCost = end - begin;
+//        std::cout << "cal_mine : " << unsigned(std::log2(i)) << " : " << timeCost.count() << "s." << std::endl;
     }
 
 
@@ -222,14 +223,14 @@ std::vector<std::complex<double>> cfftNoWait(const std::vector<std::complex<doub
 
 //changing the complex multiplication to 3*5+ does not make it faster. Neither does reusing oddFactor memory.
 mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse) {
-    auto begin = std::chrono::steady_clock::now();
+//    auto begin = std::chrono::steady_clock::now();
     omp_set_num_threads(omp_get_max_threads());
     mcomplex* sampleBuffer1 = (mcomplex*)malloc(sizeof(mcomplex) * order);
     mcomplex* sampleBuffer2 = (mcomplex*)malloc(sizeof(mcomplex) * order);
     const unsigned numOfBits = unsigned(std::log2(order));
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "init_mine : " << timeCost.count() << "s." << std::endl;
+//    auto end = std::chrono::steady_clock::now();
+//    std::chrono::duration<double> timeCost = end - begin;
+//    std::cout << "init_minc : " << timeCost.count() << "s." << std::endl;
 
 
     #pragma omp parallel for schedule(static)
@@ -245,25 +246,34 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
 
     for (unsigned i = 1; i < order; i *= 2) {
         const double numOfPointsReciprocal = 1.0 / double(i * 2);
-        begin = std::chrono::steady_clock::now();
+//        begin = std::chrono::steady_clock::now();
         #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < order; ++j) {
-            auto oddFct = oddFactorM(numOfPointsReciprocal, j, inverseFactor);
+            auto oddFct = oddFactor(numOfPointsReciprocal, j, inverseFactor);
+
+            if (j % (i * 2) < i) {
+                nextBuffer[j][0] = currentBuffer[j][0] + oddFct.real() * currentBuffer[j + i][0] - oddFct.imag() * currentBuffer[j + i][1];
+                nextBuffer[j][1] = currentBuffer[j][1] + oddFct.real() * currentBuffer[j + i][1] + oddFct.imag() * currentBuffer[j + i][0];
+            } else {
+                nextBuffer[j][0] = currentBuffer[j - i][0] + oddFct.real() * currentBuffer[j][0] - oddFct.imag() * currentBuffer[j][1];
+                nextBuffer[j][1] = currentBuffer[j - i][1] + oddFct.real() * currentBuffer[j][1] + oddFct.imag() * currentBuffer[j][0];
+            }
 //            auto tid = omp_get_thread_num();
 //            oddFactorM(numOfPointsReciprocal, j, oddFactors, tid,inverseFactor);
-            if (j % (i * 2) < i) {
-                nextBuffer[j][0] = currentBuffer[j][0] + oddFct[0] * currentBuffer[j + i][0] - oddFct[1] * currentBuffer[j + i][1];
-                nextBuffer[j][1] = currentBuffer[j][1] + oddFct[0] * currentBuffer[j + i][1] + oddFct[1] * currentBuffer[j + i][0];
-            } else {
-                nextBuffer[j][0] = currentBuffer[j - i][0] + oddFct[0] * currentBuffer[j][0] - oddFct[1] * currentBuffer[j][1];
-                nextBuffer[j][1] = currentBuffer[j - i][1] + oddFct[0] * currentBuffer[j][1] + oddFct[1] * currentBuffer[j][0];
-            }
-            free(oddFct);
+
+//            if (j % (i * 2) < i) {
+//                nextBuffer[j][0] = currentBuffer[j][0] + oddFct[0] * currentBuffer[j + i][0] - oddFct[1] * currentBuffer[j + i][1];
+//                nextBuffer[j][1] = currentBuffer[j][1] + oddFct[0] * currentBuffer[j + i][1] + oddFct[1] * currentBuffer[j + i][0];
+//            } else {
+//                nextBuffer[j][0] = currentBuffer[j - i][0] + oddFct[0] * currentBuffer[j][0] - oddFct[1] * currentBuffer[j][1];
+//                nextBuffer[j][1] = currentBuffer[j - i][1] + oddFct[0] * currentBuffer[j][1] + oddFct[1] * currentBuffer[j][0];
+//            }
+            //free(oddFct);
         }
         std::swap(currentBuffer, nextBuffer);
-        end = std::chrono::steady_clock::now();
-        timeCost = end - begin;
-        std::cout << "cal_minc : " << unsigned(std::log2(i)) << " : " << timeCost.count() << "s." << std::endl;
+//        end = std::chrono::steady_clock::now();
+//        timeCost = end - begin;
+//        std::cout << "cal_minc : " << unsigned(std::log2(i)) << " : " << timeCost.count() << "s." << std::endl;
     }
     //free(oddFactors);
 
@@ -354,7 +364,7 @@ std::vector<std::complex<double>> besselM(const std::complex<double>& z, const u
     auto Xs = cfftm(xs, order, true);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "minc : " << z << " : " << timeCost.count() << "s." << std::endl;
+    std::cout << "     minc : " << timeCost.count() << "s." << std::endl;
     auto Xsv = std::vector<std::complex<double>>(order);
     using namespace std::complex_literals;
     for (unsigned l = 0; l < order; ++l) {
@@ -435,7 +445,7 @@ std::vector<std::complex<double>> bessel(const std::complex<double>& z, const un
     auto Xs = cfft(xs, true);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "mine : " << z << " : " << timeCost.count() << "s." << std::endl;
+    std::cout << "     mine : " << timeCost.count() << "s." << std::endl;
     using namespace std::complex_literals;
     for (unsigned l = 0; l < order; ++l) {
         Xs[l] *= std::pow(1i, -l) * 2.0;
@@ -482,16 +492,16 @@ std::vector<std::complex<double>> besselW(const std::complex<double>& z, const u
         in[i][1] = xs.imag();
     }
     fftw_plan_with_nthreads(omp_get_max_threads());
-    auto begin = std::chrono::steady_clock::now();
+//    auto begin = std::chrono::steady_clock::now();
     fftw_plan p = fftw_plan_dft_1d(int(order), in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+//    auto end = std::chrono::steady_clock::now();
+//    std::chrono::duration<double> timeCost = end - begin;
+//    std::cout << "init_fftw : " << timeCost.count() << "s." << std::endl;
+    auto begin = std::chrono::steady_clock::now();
+    fftw_execute(p);
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "fftw_plan : " << z << " : " << timeCost.count() << "s." << std::endl;
-    begin = std::chrono::steady_clock::now();
-    fftw_execute(p);
-    end = std::chrono::steady_clock::now();
-    timeCost = end - begin;
-    std::cout << "fftw : " << z << " : " << timeCost.count() << "s." << std::endl;
+    std::cout << "     fftw : " << timeCost.count() << "s." << std::endl;
     auto Xs = std::vector<std::complex<double>>(order);
     using namespace std::complex_literals;
     for (unsigned l = 0; l < order; ++l) {
