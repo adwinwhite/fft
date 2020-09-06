@@ -64,7 +64,7 @@ int main() {
     constexpr size_t START_X = 2000;
     auto xs1 = std::vector<double>(FIGURE_SIZE);
     auto ys1 = std::vector<double>(FIGURE_SIZE);
-    #pragma omp parallel for schedule(guided)
+    #pragma omp parallel for schedule(static)
     for (size_t i = START_X; i < START_X + FIGURE_SIZE; ++i) {
         double y = std::abs(trapezoidalIntegral(i) - PI) / PI;
         ys1[i - START_X] = y;
@@ -80,7 +80,7 @@ int main() {
 //    std::cout << "num of partitions : relative error" << std::endl;
     auto xs2 = std::vector<double>(FIGURE_SIZE);
     auto ys2 = std::vector<double>(FIGURE_SIZE);
-    #pragma omp parallel for schedule(guided)
+    #pragma omp parallel for schedule(static)
     for (size_t i = START_X; i < START_X + FIGURE_SIZE; ++i) {
         double y = std::abs(simpsonIntegral(i) - PI) / PI;
         ys2[i - START_X] = y;
@@ -96,7 +96,7 @@ int main() {
 //    std::cout << "num of points : relative error" << std::endl;
     auto xs3 = std::vector<double>(FIGURE_SIZE);
     auto ys3 = std::vector<double>(FIGURE_SIZE);
-    #pragma omp parallel for schedule(guided)
+    #pragma omp parallel for schedule(static)
     for (size_t i = START_X; i < START_X + FIGURE_SIZE; ++i) {
         double y = std::abs(montecarloIntegral(i) - PI) / PI;
         ys3[i - START_X] = y;
