@@ -18,51 +18,6 @@ const double TWO_PI = 2.0 * PI;
 
 typedef double mcomplex[2];
 
-std::complex<double> oddFactor(const double& numOfPointsReciprocal, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
-    using namespace std::complex_literals;
-    return std::exp(inverseFactor * 2i * PI * double(inputIndex) * numOfPointsReciprocal);
-}
-
-std::complex<double> oddFactor(const unsigned& numOfPoints, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
-    using namespace std::complex_literals;
-    return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
-}
-
-std::vector<std::complex<double>> phaseFactors(const unsigned& numOfPoints, const double& inverseFactor = -1.0) {
-    using namespace std::complex_literals;
-    auto factors = std::vector<std::complex<double>>(numOfPoints);
-    auto numOfPointsReciprocal = 1.0 / double(numOfPoints);
-    for (unsigned j = 0; j < numOfPoints; ++j) {
-        factors[j] = std::exp(inverseFactor * 2i * PI * double(j) * numOfPointsReciprocal);
-    }
-    return factors;
-}
-
-//slower than c++ version;
-double* oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
-    double* result = (double*)malloc(sizeof(mcomplex));
-    result[0] = std::cos(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
-    result[1] = inverseFactor * std::sin(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
-    return result;
-}
-
-mcomplex* phaseFactorsM(const unsigned& numOfPoints, const double& inverseFactor = -1.0) {
-    mcomplex* result = (mcomplex*)malloc(sizeof(mcomplex) * numOfPoints);
-    const double yayFactor = TWO_PI / double(numOfPoints);
-    for (unsigned j = 0; j < numOfPoints; ++j) {
-        result[j][0] = std::cos(double(j) * yayFactor);
-        result[j][1] = inverseFactor * std::sin(double(j) * yayFactor);
-    }
-    return result;
-}
-
-//do not allocate memory every time. tested: slower than previous one.
-void oddFactorM(const double& numOfPointsReciprocal, const unsigned& inputIndex, mcomplex* oddFactors, const unsigned& threadIndex, const double& inverseFactor = -1.0) {
-    oddFactors[threadIndex][0] = std::cos(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
-    oddFactors[threadIndex][1] = inverseFactor * std::sin(TWO_PI * double(inputIndex) * numOfPointsReciprocal);
-}
-
-
 const unsigned BIT_REVERSE_TALBE8 [] = {
     0,  128, 64, 192, 32, 160,  96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
     8,  136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248,
@@ -108,18 +63,15 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
  *  None of above optimizations is done;
  */
 std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& samples, const bool& isInverse) {
-
+    auto begin = std::chrono::steady_clock::now();
     omp_set_num_threads(omp_get_max_threads());
     const unsigned sampleSize = unsigned(samples.size());
     auto samplesBuffer1 = std::vector<std::complex<double>>(sampleSize);
     auto samplesBuffer2 = std::vector<std::complex<double>>(sampleSize);
     const unsigned numOfBits = unsigned(std::log2(sampleSize));
     const double inverseFactor = isInverse ? -1.0 : 1.0;
-    auto factors = std::vector<std::complex<double>>(sampleSize);
+    auto phaseFcts = std::vector<std::complex<double>>(sampleSize);
     auto sampleSizeReciprocal = 1.0 / double(sampleSize);
-    for (unsigned j = 0; j < sampleSize; ++j) {
-        factors[j] = std::exp(inverseFactor * std::complex<double>(0, 1) * TWO_PI * double(j) * sampleSizeReciprocal);
-    }
 
 
 
@@ -127,16 +79,16 @@ std::vector<std::complex<double>> cfft(const std::vector<std::complex<double>>& 
     #pragma omp parallel for schedule(static)
     for (unsigned i = 0; i < sampleSize; ++i) {
         samplesBuffer1[i] = samples[bitReverseInt(i, numOfBits)];
+        phaseFcts[i] = std::exp(inverseFactor * std::complex<double>(0, 1) * TWO_PI * double(i) * sampleSizeReciprocal);
     }
 
     auto currentBuffer = &samplesBuffer1;
     auto nextBuffer = &samplesBuffer2;
 
-    auto begin = std::chrono::steady_clock::now();
-    auto phaseFcts = phaseFactors(sampleSize, inverseFactor);
+
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "fcts_mine : " << timeCost.count() << "s." << std::endl;
+    std::cout << "init_mine : " << timeCost.count() << "s." << std::endl;
 
     for (unsigned i = 0; i < numOfBits; ++i) {
         const unsigned factionSize = 1 << i;
@@ -196,7 +148,7 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
     auto nextBuffer = sampleBuffer2;
     auto end = std::chrono::steady_clock::now();
     std::chrono::duration<double> timeCost = end - begin;
-    std::cout << "fcts_minc : " << timeCost.count() << "s." << std::endl;
+    std::cout << "init_minc : " << timeCost.count() << "s." << std::endl;
 
 
     for (unsigned i = 0; i < numOfBits; ++i) {
@@ -359,7 +311,7 @@ int main()
 
     for (unsigned i = 0; i < 3; ++i) {
         auto fftwys = besselW(std::complex<double>(std::pow(10, i), 0), ORDER);
-        auto myys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
+        //auto myys = bessel(std::complex<double>(std::pow(10, i), 0), ORDER);
         auto mycys = besselM(std::complex<double>(std::pow(10, i), 0), ORDER);
 
     }
