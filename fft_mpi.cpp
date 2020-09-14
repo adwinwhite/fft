@@ -12,6 +12,11 @@ const double TWO_PI = 2.0 * PI;
 
 typedef double mcomplex[2];
 
+std::complex<double> phaseFactor(const unsigned& numOfPoints, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
+    using namespace std::complex_literals;
+    return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
+}
+
 const unsigned BIT_REVERSE_TALBE8 [] = {
     0,  128, 64, 192, 32, 160,  96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
     8,  136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248,
@@ -153,9 +158,26 @@ int main(int argc, char** argv) {
         //Combine and calculate the final results;
         auto fftOuputFinal = (mcomplex*)malloc(numOfSamplesPer * world_size * sizeof(mcomplex));
         for (unsigned i = 0; i < numOfSamplesPer; ++i) {
-
+            for (unsigned j = 0; j < world_size; ++j) {
+                std::complex<double> tempX = 0;
+                for (unsigned k = 0; k < world_size; ++k) {
+                    tempX += std::complex<double>{fftOutputAll[k * numOfSamplesPer + i][0], fftOutputAll[k * numOfSamplesPer + i][1]} * phaseFactor(numOfSamplesPer * world_size, k * numOfSamplesPer + i);
+                }
+                fftOuputFinal[j * numOfSamplesPer + i][0] = tempX.real();
+                fftOuputFinal[j * numOfSamplesPer + i][1] = tempX.imag();
+            }
         }
-
+        std::ofstream ofs;
+        ofs.open("fft_transfomed_data", std::ios::out | std::ios::binary | std::ios::trunc);
+        for (unsigned i = 0; i < numOfSamplesPer * world_size; ++i) {
+            ofs << fftOuputFinal[i][0] << " " << fftOuputFinal[i][1] << std::endl;
+        }
+        ofs.close();
+        free(fftOuputFinal);
+        free(fftOutputAll);
+        free(fftInputAll);
+        free(fftOutputLocal);
+        free(fftInputLocal);
     }
 
     // Free memory
