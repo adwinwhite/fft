@@ -53,13 +53,21 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
     return bitReversePerByte(orig, sizeof(unsigned)) >> (8 * sizeof(unsigned) - numOfBits);
 }
 
+void writeResultToFile(const mcomplex* result, const unsigned& sizeOfResult) {
+    std::ofstream ofs;
+    ofs.open("fft_transfomed_data", std::ios::out | std::ios::trunc);
+    for (unsigned i = 0; i < sizeOfResult; ++i) {
+        ofs << result[i][0] << " " << result[i][1] << std::endl;
+    }
+    ofs.close();
+}
 
 mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse) {
-    mcomplex* sampleBuffer1 = (mcomplex*)malloc(sizeof(mcomplex) * order);
-    mcomplex* sampleBuffer2 = (mcomplex*)malloc(sizeof(mcomplex) * order);
+    mcomplex* sampleBuffer1 = new mcomplex[order];
+    mcomplex* sampleBuffer2 = new mcomplex[order];
     const unsigned numOfBits = unsigned(std::log2(order));
     const double inverseFactor = isInverse ? -1.0 : 1.0;
-    mcomplex* phaseFcts = (mcomplex*)malloc(sizeof(mcomplex) * order);
+    mcomplex* phaseFcts = new mcomplex[order];
     const double yayFactor = TWO_PI / double(order);
 
 
@@ -91,7 +99,7 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
         }
         std::swap(currentBuffer, nextBuffer);
     }
-    free(phaseFcts);
+    delete[] phaseFcts;
 
 
     if (isInverse) {
@@ -101,7 +109,7 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
             nextBuffer[i][1] *= sampleSizeReciprocal;
         }
     }
-    free(currentBuffer);
+    delete[] currentBuffer;
     return nextBuffer;
 }
 
@@ -114,12 +122,9 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
     //Create my complex datatype
-    MPI_Datatype* MPI_mcomplex;
-    MPI_Datatype type[2] = { MPI_DOUBLE, MPI_DOUBLE};
-    int blocklen[2] = {8, 8};
-    MPI_Aint disp[2] = {0, 8};
-    MPI_Type_create_struct(2, blocklen, disp, type, MPI_mcomplex);
-    MPI_Type_commit(MPI_mcomplex);
+    MPI_Datatype MPI_mcomplex;
+    MPI_Type_contiguous(2, MPI_DOUBLE, &MPI_mcomplex);
+    MPI_Type_commit(&MPI_mcomplex);
 
     char* memblock;
     mcomplex* fftInputAll;
@@ -136,7 +141,7 @@ int main(int argc, char** argv) {
         ifs.read(memblock, size);
         ifs.close();
         const auto originalData = reinterpret_cast<double*>(memblock);
-        fftInputAll = (mcomplex*)malloc(size_t(size));
+        fftInputAll = new mcomplex[numOfSamplesPer * world_size];
         for (unsigned i = 0; i < unsigned(world_size); ++i) {
             for (unsigned j = 0; j < numOfSamplesPer; ++j) {
                 fftInputAll[i * numOfSamplesPer + j][0] = originalData[j * world_size * 2 + i];
@@ -146,41 +151,40 @@ int main(int argc, char** argv) {
         delete[] memblock;
     }
     MPI_Bcast(&numOfSamplesPer, 1, MPI_UNSIGNED, ROOT_RANK, MPI_COMM_WORLD);
-    fftInputLocal = (mcomplex*)malloc(numOfSamplesPer * sizeof(mcomplex));
-    MPI_Scatter(fftInputAll, int(numOfSamplesPer * world_size), *MPI_mcomplex, fftInputLocal, int(numOfSamplesPer), *MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
+    fftInputLocal = new mcomplex[numOfSamplesPer];
+    MPI_Scatter(fftInputAll, int(numOfSamplesPer), MPI_mcomplex, fftInputLocal, int(numOfSamplesPer), MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
     const auto fftOutputLocal = cfftm(fftInputLocal, numOfSamplesPer, true);
     if (world_rank == ROOT_RANK) {
-        fftOutputAll = (mcomplex*)malloc(numOfSamplesPer * world_size * sizeof(mcomplex));
+        fftOutputAll = new mcomplex[numOfSamplesPer * world_size];
     }
-    MPI_Gather(fftOutputLocal, numOfSamplesPer, *MPI_mcomplex, fftOutputAll, numOfSamplesPer * world_size, *MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
+    MPI_Gather(fftOutputLocal, numOfSamplesPer, MPI_mcomplex, fftOutputAll, numOfSamplesPer * world_size, MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
 
     if (world_rank == ROOT_RANK) {
         //Combine and calculate the final results;
-        auto fftOuputFinal = (mcomplex*)malloc(numOfSamplesPer * world_size * sizeof(mcomplex));
-        for (unsigned i = 0; i < numOfSamplesPer; ++i) {
-            for (unsigned j = 0; j < world_size; ++j) {
-                std::complex<double> tempX = 0;
-                for (unsigned k = 0; k < world_size; ++k) {
-                    tempX += std::complex<double>{fftOutputAll[k * numOfSamplesPer + i][0], fftOutputAll[k * numOfSamplesPer + i][1]} * phaseFactor(numOfSamplesPer * world_size, k * numOfSamplesPer + i);
+        if (world_size > 1) {
+            mcomplex* fftOutputFinal = new mcomplex[numOfSamplesPer * world_size];
+            for (unsigned i = 0; i < numOfSamplesPer; ++i) {
+                for (unsigned j = 0; j < world_size; ++j) {
+                    std::complex<double> tempX = 0;
+                    for (unsigned k = 0; k < world_size; ++k) {
+                        tempX += std::complex<double>{fftOutputAll[k * numOfSamplesPer + i][0], fftOutputAll[k * numOfSamplesPer + i][1]} * phaseFactor(numOfSamplesPer * world_size, k * numOfSamplesPer + i);
+                    }
+                    fftOutputFinal[j * numOfSamplesPer + i][0] = tempX.real();
+                    fftOutputFinal[j * numOfSamplesPer + i][1] = tempX.imag();
                 }
-                fftOuputFinal[j * numOfSamplesPer + i][0] = tempX.real();
-                fftOuputFinal[j * numOfSamplesPer + i][1] = tempX.imag();
             }
+            writeResultToFile(fftOutputFinal, numOfSamplesPer * world_size);
+            delete[] fftOutputFinal;
+        } else {
+            writeResultToFile(fftOutputLocal, numOfSamplesPer);
         }
-        std::ofstream ofs;
-        ofs.open("fft_transfomed_data", std::ios::out | std::ios::binary | std::ios::trunc);
-        for (unsigned i = 0; i < numOfSamplesPer * world_size; ++i) {
-            ofs << fftOuputFinal[i][0] << " " << fftOuputFinal[i][1] << std::endl;
-        }
-        ofs.close();
-        free(fftOuputFinal);
-        free(fftOutputAll);
-        free(fftInputAll);
-        free(fftOutputLocal);
-        free(fftInputLocal);
+        delete[] fftOutputAll;
+        delete[] fftInputAll;
     }
-
     // Free memory
+    delete[] fftOutputLocal;
+    delete[] fftInputLocal;
+
 
 
     MPI_Finalize();
