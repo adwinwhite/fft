@@ -21,10 +21,13 @@ int main(int argc, char** argv) {
     zis >> zi;
     orders >> order;
     std::ofstream os;
-    os.open("fft_data", std::ios::out | std::ios::trunc);
+    os.open("fft_data", std::ios::out | std::ios::binary | std::ios::trunc);
     for (size_t i = 0; i < order; ++i) {
-        auto x = preBesselF(std::complex(zr, zi), order, i);
-        os << x.real() << " " << x.imag() << std::endl;
+        const auto x = preBesselF(std::complex<double>(zr, zi), order, i);
+        auto xr = x.real();
+        auto xi = x.imag();
+        os.write(reinterpret_cast<char*>(&xr), sizeof(double));
+        os.write(reinterpret_cast<char*>(&xi), sizeof(double));
     }
     os.close();
     return 0;

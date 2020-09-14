@@ -2,10 +2,12 @@ cmake_minimum_required(VERSION 3.5)
 
 project(homework3 LANGUAGES CXX)
 
+set(CMAKE_CXX_COMPILER "mpic++")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(fft_generate_data fft_generate_data.cpp)
+add_executable(fft_mpi fft_mpi.cpp)
 
 add_executable(fft fft.cpp)
 target_compile_options(fft PRIVATE -O3 -fopenmp -ffast-math -march=native -mtune=native)
