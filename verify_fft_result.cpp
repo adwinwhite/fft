@@ -1,21 +1,12 @@
 #include <iostream>
-#include <fstream>
-#include <complex>
 #include <cmath>
-#include <vector>
-#include <mpi.h>
-
-#define ROOT_RANK 0
+#include <fstream>
+#include <omp.h>
 
 const double PI = std::acos(-1.0);
 const double TWO_PI = 2.0 * PI;
 
 typedef double mcomplex[2];
-
-std::complex<double> phaseFactor(const unsigned& numOfPoints, const unsigned& inputIndex, const double& inverseFactor = -1.0) {
-    using namespace std::complex_literals;
-    return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
-}
 
 const unsigned BIT_REVERSE_TALBE8 [] = {
     0,  128, 64, 192, 32, 160,  96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
@@ -53,24 +44,19 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
     return bitReversePerByte(orig, sizeof(unsigned)) >> (8 * sizeof(unsigned) - numOfBits);
 }
 
-void writeResultToFile(const mcomplex* result, const unsigned& sizeOfResult) {
-    std::ofstream ofs;
-    ofs.open("fft_transfomed_data", std::ios::out | std::ios::trunc);
-    for (unsigned i = 0; i < sizeOfResult; ++i) {
-        ofs << result[i][0] << " " << result[i][1] << std::endl;
-    }
-    ofs.close();
-}
 
 mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse) {
-    mcomplex* sampleBuffer1 = new mcomplex[order];
-    mcomplex* sampleBuffer2 = new mcomplex[order];
+    omp_set_num_threads(omp_get_max_threads());
+    mcomplex* sampleBuffer1 = (mcomplex*)malloc(sizeof(mcomplex) * order);
+    mcomplex* sampleBuffer2 = (mcomplex*)malloc(sizeof(mcomplex) * order);
     const unsigned numOfBits = unsigned(std::log2(order));
     const double inverseFactor = isInverse ? -1.0 : 1.0;
-    mcomplex* phaseFcts = new mcomplex[order];
+    mcomplex* phaseFcts = (mcomplex*)malloc(sizeof(mcomplex) * order);
     const double yayFactor = TWO_PI / double(order);
 
 
+
+    #pragma omp parallel for schedule(static)
     for (unsigned i = 0; i < order; ++i) {
         sampleBuffer1[i][0] = samples[bitReverseInt(i, numOfBits)][0];
         sampleBuffer1[i][1] = samples[bitReverseInt(i, numOfBits)][1];
@@ -86,6 +72,7 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
     for (unsigned i = 0; i < numOfBits; ++i) {
         const unsigned factionSize = 1 << i;
         const unsigned numOfFactions = order >> (i + 1);
+        #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < numOfFactions; ++j) {
             const unsigned halfFactionSize = factionSize >> 1;
             for (unsigned k = 0; k < halfFactionSize; ++k) {
@@ -99,93 +86,35 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
         }
         std::swap(currentBuffer, nextBuffer);
     }
-    delete[] phaseFcts;
+    free(phaseFcts);
 
 
     if (isInverse) {
+        //"parallel for" is not compatible with "for (auto x : xs)".
         const double sampleSizeReciprocal = 1.0 / double(order);
+        #pragma omp parallel for schedule(static)
         for(unsigned i = 0; i < order; ++i) {
             nextBuffer[i][0] *= sampleSizeReciprocal;
             nextBuffer[i][1] *= sampleSizeReciprocal;
         }
     }
-    delete[] currentBuffer;
+    free(currentBuffer);
     return nextBuffer;
 }
 
-int main(int argc, char** argv) {
-    //Init mpi and obtain basic info
-    MPI_Init(&argc, &argv);
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-    //Create my complex datatype
-    MPI_Datatype MPI_mcomplex;
-    MPI_Type_contiguous(2, MPI_DOUBLE, &MPI_mcomplex);
-    MPI_Type_commit(&MPI_mcomplex);
-
-    char* memblock;
-    mcomplex* fftInputAll;
-    mcomplex* fftInputLocal;
-    mcomplex* fftOutputAll;
-    unsigned numOfSamplesPer;
-    if (world_rank == ROOT_RANK) {
-        std::ifstream ifs;
-        ifs.open("fft_data", std::ios::in | std::ios::binary | std::ios::ate);
-        const std::streampos size = ifs.tellg();
-        numOfSamplesPer = unsigned(size) / sizeof(double) / 2 / unsigned(world_size);
-        memblock = new char[size_t(size)];
-        ifs.seekg(0, std::ios::beg);
-        ifs.read(memblock, size);
-        ifs.close();
-        const auto originalData = reinterpret_cast<double*>(memblock);
-        fftInputAll = new mcomplex[numOfSamplesPer * world_size];
-        for (unsigned i = 0; i < unsigned(world_size); ++i) {
-            for (unsigned j = 0; j < numOfSamplesPer; ++j) {
-                fftInputAll[i * numOfSamplesPer + j][0] = originalData[j * world_size * 2 + i];
-                fftInputAll[i * numOfSamplesPer + j][1] = originalData[j * world_size * 2 + i + 1];
-            }
-        }
-        delete[] memblock;
+int main() {
+    std::ifstream ifs;
+    ifs.open("fft_data", std::ios::in | std::ios::binary | std::ios::ate);
+    const std::streampos size = ifs.tellg();
+    auto memblock = new char[size_t(size)];
+    ifs.seekg(0, std::ios::beg);
+    ifs.read(memblock, size);
+    ifs.close();
+    const auto fftInput = reinterpret_cast<mcomplex*>(memblock);
+    const size_t order = size / 2 / sizeof(double);
+    const auto Xs = cfftm(fftInput, order, true);
+    for (size_t i = 0; i < 10; ++i) {
+        std::cout << Xs[i][0] << ", " << Xs[i][1] << std::endl;
     }
-    MPI_Bcast(&numOfSamplesPer, 1, MPI_UNSIGNED, ROOT_RANK, MPI_COMM_WORLD);
-    fftInputLocal = new mcomplex[numOfSamplesPer];
-    MPI_Scatter(fftInputAll, int(numOfSamplesPer), MPI_mcomplex, fftInputLocal, int(numOfSamplesPer), MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
-    const auto fftOutputLocal = cfftm(fftInputLocal, numOfSamplesPer, true);
-    if (world_rank == ROOT_RANK) {
-        fftOutputAll = new mcomplex[numOfSamplesPer * world_size];
-    }
-    MPI_Gather(fftOutputLocal, numOfSamplesPer, MPI_mcomplex, fftOutputAll, numOfSamplesPer, MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
-
-    if (world_rank == ROOT_RANK) {
-        //Combine and calculate the final results;
-        if (world_size > 1) {
-            mcomplex* fftOutputFinal = new mcomplex[numOfSamplesPer * world_size];
-            for (unsigned i = 0; i < numOfSamplesPer; ++i) {
-                for (unsigned j = 0; j < world_size; ++j) {
-                    std::complex<double> tempX = 0;
-                    for (unsigned k = 0; k < world_size; ++k) {
-                        tempX += std::complex<double>{fftOutputAll[k * numOfSamplesPer + i][0], fftOutputAll[k * numOfSamplesPer + i][1]} * phaseFactor(numOfSamplesPer * world_size, k * numOfSamplesPer + i);
-                    }
-                    fftOutputFinal[j * numOfSamplesPer + i][0] = tempX.real();
-                    fftOutputFinal[j * numOfSamplesPer + i][1] = tempX.imag();
-                }
-            }
-            writeResultToFile(fftOutputFinal, numOfSamplesPer * world_size);
-            delete[] fftOutputFinal;
-        } else {
-            writeResultToFile(fftOutputLocal, numOfSamplesPer);
-        }
-        delete[] fftOutputAll;
-        delete[] fftInputAll;
-    }
-    // Free memory
-    delete[] fftOutputLocal;
-    delete[] fftInputLocal;
-
-
-
-    MPI_Finalize();
+    delete[] memblock;
 }
