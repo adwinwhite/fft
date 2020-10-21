@@ -1,12 +1,12 @@
+#include "fft_uniprocessor.h"
+
 #include <iostream>
 #include <cmath>
-#include <fstream>
-//#include <omp.h>
 
 const double PI = std::acos(-1.0);
 const double TWO_PI = 2.0 * PI;
 
-typedef double mcomplex[2];
+
 
 const unsigned BIT_REVERSE_TALBE8 [] = {
     0,  128, 64, 192, 32, 160,  96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
@@ -45,18 +45,16 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
 }
 
 
-mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse) {
-//    omp_set_num_threads(omp_get_max_threads());
-    mcomplex* sampleBuffer1 = (mcomplex*)malloc(sizeof(mcomplex) * order);
-    mcomplex* sampleBuffer2 = (mcomplex*)malloc(sizeof(mcomplex) * order);
+
+myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, const bool& isInverse) {
+    myfft::mcomplex* sampleBuffer1 = new myfft::mcomplex[order];
+    myfft::mcomplex* sampleBuffer2 = new myfft::mcomplex[order];
     const unsigned numOfBits = unsigned(std::log2(order));
     const double inverseFactor = isInverse ? -1.0 : 1.0;
-    mcomplex* phaseFcts = (mcomplex*)malloc(sizeof(mcomplex) * order);
+    myfft::mcomplex* phaseFcts = new myfft::mcomplex[order];
     const double yayFactor = TWO_PI / double(order);
 
 
-
-//    #pragma omp parallel for schedule(static)
     for (unsigned i = 0; i < order; ++i) {
         sampleBuffer1[i][0] = samples[bitReverseInt(i, numOfBits)][0];
         sampleBuffer1[i][1] = samples[bitReverseInt(i, numOfBits)][1];
@@ -72,7 +70,6 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
     for (unsigned i = 0; i < numOfBits; ++i) {
         const unsigned factionSize = 1 << i;
         const unsigned numOfFactions = order >> (i + 1);
-//        #pragma omp parallel for schedule(static)
         for (unsigned j = 0; j < numOfFactions; ++j) {
             const unsigned halfFactionSize = factionSize >> 1;
             for (unsigned k = 0; k < halfFactionSize; ++k) {
@@ -86,38 +83,16 @@ mcomplex* cfftm(mcomplex* samples, const unsigned& order, const bool& isInverse)
         }
         std::swap(currentBuffer, nextBuffer);
     }
-    free(phaseFcts);
+    delete[] phaseFcts;
 
 
     if (isInverse) {
-        //"parallel for" is not compatible with "for (auto x : xs)".
         const double sampleSizeReciprocal = 1.0 / double(order);
-//        #pragma omp parallel for schedule(static)
         for(unsigned i = 0; i < order; ++i) {
             nextBuffer[i][0] *= sampleSizeReciprocal;
             nextBuffer[i][1] *= sampleSizeReciprocal;
         }
     }
-    free(currentBuffer);
+    delete[] currentBuffer;
     return nextBuffer;
-}
-
-int main() {
-    std::ifstream ifs;
-    ifs.open("fft_data", std::ios::in | std::ios::binary | std::ios::ate);
-    const std::streampos size = ifs.tellg();
-    auto memblock = new char[size_t(size)];
-    ifs.seekg(0, std::ios::beg);
-    ifs.read(memblock, size);
-    ifs.close();
-    const auto fftInput = reinterpret_cast<mcomplex*>(memblock);
-    for (size_t i = 0; i < 10; ++i) {
-        std::cout << fftInput[i][0] << ", " << fftInput[i][1] << std::endl;
-    }
-    const size_t order = size / 2 / sizeof(double);
-    const auto Xs = cfftm(fftInput, order, true);
-    for (size_t i = 0; i < 10; ++i) {
-        std::cout << Xs[i][0] << ", " << Xs[i][1] << std::endl;
-    }
-    delete[] memblock;
 }
