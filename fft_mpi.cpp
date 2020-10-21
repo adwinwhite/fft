@@ -18,12 +18,11 @@ std::complex<double> phaseFactor(const unsigned& numOfPoints, const unsigned& in
     return std::exp(inverseFactor * 2i * PI * double(inputIndex) / double(numOfPoints));
 }
 
-void writeResultToFile(const std::string& filepath, const myfft::mcomplex* result, const unsigned& sizeOfResult) {
+void writeResultToFile(const std::string& filepath, myfft::mcomplex* samples, const unsigned& numOfSamples) {
     std::ofstream ofs;
-    ofs.open(filepath, std::ios::out | std::ios::trunc);
-    for (unsigned i = 0; i < sizeOfResult; ++i) {
-        ofs << result[i][0] << " " << result[i][1] << std::endl;
-    }
+    ofs.open(filepath, std::ios::out | std::ios::binary | std::ios::trunc);
+    const auto data = reinterpret_cast<char*>(samples);
+    ofs.write(data, numOfSamples * sizeof(double) * 2);
     ofs.close();
 }
 
