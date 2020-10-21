@@ -81,7 +81,6 @@ myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, 
                 nextBuffer[j * factionSize + k][1] = currentBuffer[j * factionSize + k][1] + tempi;
                 nextBuffer[j * factionSize + k + halfFactionSize][0] = currentBuffer[j * factionSize + k][0] - tempr;
                 nextBuffer[j * factionSize + k + halfFactionSize][1] = currentBuffer[j * factionSize + k][1] - tempi;
-                std::cout << "is this executed?" << std::endl;
             }
         }
 

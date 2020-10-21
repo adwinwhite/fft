@@ -67,7 +67,6 @@ int main(int argc, char** argv) {
     MPI_Type_contiguous(2, MPI_DOUBLE, &MPI_mcomplex);
     MPI_Type_commit(&MPI_mcomplex);
 
-    char* memblock;
     myfft::mcomplex* fftInputAll;
     myfft::mcomplex* fftInputLocal;
     myfft::mcomplex* fftOutputAll;
@@ -78,10 +77,12 @@ int main(int argc, char** argv) {
         fftInputAll = loadSample("fft_data", unsigned(world_size), &numOfSamplesPer);
     }
 
+
     MPI_Bcast(&numOfSamplesPer, 1, MPI_UNSIGNED, ROOT_RANK, MPI_COMM_WORLD);
     fftInputLocal = new myfft::mcomplex[numOfSamplesPer];
     MPI_Scatter(fftInputAll, int(numOfSamplesPer), MPI_mcomplex, fftInputLocal, int(numOfSamplesPer), MPI_mcomplex, ROOT_RANK, MPI_COMM_WORLD);
-    const auto fftOutputLocal = myfft::cfft_c(fftInputLocal, numOfSamplesPer, true);
+
+    const auto fftOutputLocal = myfft::cfft_c(fftInputLocal, numOfSamplesPer);
 
     // Gather data to root
     if (world_rank == ROOT_RANK) {
