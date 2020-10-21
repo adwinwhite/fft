@@ -27,15 +27,14 @@ void writeResultToFile(const std::string& filepath, const myfft::mcomplex* resul
     ofs.close();
 }
 
-myfft::mcomplex* loadSample(const std::string& filepath, const unsigned numOfProcessors) {
+myfft::mcomplex* loadSample(const std::string& filepath, const unsigned &numOfProcessors, unsigned* numOfSamplesPer) {
     char* memblock;
     myfft::mcomplex* samples;
-    unsigned numOfSamplesPer;
 
     std::ifstream ifs;
     ifs.open(filepath, std::ios::in | std::ios::binary | std::ios::ate);
     const std::streampos sampleSize = ifs.tellg();
-    numOfSamplesPer = unsigned(sampleSize) / sizeof(double) / 2 / unsigned(numOfProcessors);
+    *numOfSamplesPer = unsigned(sampleSize) / sizeof(double) / 2 / unsigned(numOfProcessors);
     memblock = new char[size_t(sampleSize)];
     ifs.seekg(0, std::ios::beg);
     ifs.read(memblock, sampleSize);
@@ -43,11 +42,11 @@ myfft::mcomplex* loadSample(const std::string& filepath, const unsigned numOfPro
     const auto originalData = reinterpret_cast<double*>(memblock);
 
     // Permute data to feed them to FFT of smaller size
-    samples = new myfft::mcomplex[numOfSamplesPer * numOfProcessors];
+    samples = new myfft::mcomplex[*numOfSamplesPer * numOfProcessors];
     for (unsigned i = 0; i < unsigned(numOfProcessors); ++i) {
-        for (unsigned j = 0; j < numOfSamplesPer; ++j) {
-            samples[i * numOfSamplesPer + j][0] = originalData[j * numOfProcessors * 2 + i];
-            samples[i * numOfSamplesPer + j][1] = originalData[j * numOfProcessors * 2 + i + 1];
+        for (unsigned j = 0; j < *numOfSamplesPer; ++j) {
+            samples[i * (*numOfSamplesPer) + j][0] = originalData[j * numOfProcessors * 2 + i];
+            samples[i * (*numOfSamplesPer) + j][1] = originalData[j * numOfProcessors * 2 + i + 1];
         }
     }
     delete[] memblock;
@@ -76,7 +75,7 @@ int main(int argc, char** argv) {
 
     // Load samples
     if (world_rank == ROOT_RANK) {
-        fftInputAll = loadSample("fft_data", unsigned(world_size));
+        fftInputAll = loadSample("fft_data", unsigned(world_size), &numOfSamplesPer);
     }
 
     MPI_Bcast(&numOfSamplesPer, 1, MPI_UNSIGNED, ROOT_RANK, MPI_COMM_WORLD);
@@ -104,10 +103,10 @@ int main(int argc, char** argv) {
                     fftOutputFinal[j * numOfSamplesPer + i][1] = tempX.imag();
                 }
             }
-            writeResultToFile("fft_transfomed_data", fftOutputFinal, numOfSamplesPer * world_size);
+            writeResultToFile("fft_transformed_data", fftOutputFinal, numOfSamplesPer * world_size);
             delete[] fftOutputFinal;
         } else {
-            writeResultToFile("fft_transfomed_data", fftOutputLocal, numOfSamplesPer);
+            writeResultToFile("fft_transformed_data", fftOutputLocal, numOfSamplesPer);
         }
         delete[] fftOutputAll;
         delete[] fftInputAll;

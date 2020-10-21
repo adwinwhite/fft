@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <cmath>
+#include <vector>
+#include <complex>
 
 const double PI = std::acos(-1.0);
 const double TWO_PI = 2.0 * PI;
@@ -46,7 +48,7 @@ unsigned bitReverseInt(const unsigned& orig, const unsigned& numOfBits) {
 
 
 
-myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, const bool& isInverse) {
+myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, const bool isInverse) {
     myfft::mcomplex* sampleBuffer1 = new myfft::mcomplex[order];
     myfft::mcomplex* sampleBuffer2 = new myfft::mcomplex[order];
     const unsigned numOfBits = unsigned(std::log2(order));
@@ -67,20 +69,22 @@ myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, 
     auto nextBuffer = sampleBuffer2;
 
 
-    for (unsigned i = 0; i < numOfBits; ++i) {
+    for (unsigned i = 1; i <= numOfBits; ++i) {
         const unsigned factionSize = 1 << i;
-        const unsigned numOfFactions = order >> (i + 1);
+        const unsigned numOfFactions = order >> i;
         for (unsigned j = 0; j < numOfFactions; ++j) {
             const unsigned halfFactionSize = factionSize >> 1;
             for (unsigned k = 0; k < halfFactionSize; ++k) {
-                const double tempr = phaseFcts[j * factionSize + k][0] * currentBuffer[j * factionSize + k + halfFactionSize][0] - phaseFcts[j * factionSize + k][1] * currentBuffer[j * factionSize + k + halfFactionSize][1];
-                const double tempi = phaseFcts[j * factionSize + k][0] * currentBuffer[j * factionSize + k + halfFactionSize][1] + phaseFcts[j * factionSize + k][1] * currentBuffer[j * factionSize + k + halfFactionSize][0];
+                const double tempr = phaseFcts[k * numOfFactions][0] * currentBuffer[j * factionSize + k + halfFactionSize][0] - phaseFcts[k * numOfFactions][1] * currentBuffer[j * factionSize + k + halfFactionSize][1];
+                const double tempi = phaseFcts[k * numOfFactions][0] * currentBuffer[j * factionSize + k + halfFactionSize][1] + phaseFcts[k * numOfFactions][1] * currentBuffer[j * factionSize + k + halfFactionSize][0];
                 nextBuffer[j * factionSize + k][0] = currentBuffer[j * factionSize + k][0] + tempr;
                 nextBuffer[j * factionSize + k][1] = currentBuffer[j * factionSize + k][1] + tempi;
                 nextBuffer[j * factionSize + k + halfFactionSize][0] = currentBuffer[j * factionSize + k][0] - tempr;
                 nextBuffer[j * factionSize + k + halfFactionSize][1] = currentBuffer[j * factionSize + k][1] - tempi;
+                std::cout << "is this executed?" << std::endl;
             }
         }
+
         std::swap(currentBuffer, nextBuffer);
     }
     delete[] phaseFcts;
@@ -89,10 +93,73 @@ myfft::mcomplex* myfft::cfft_c(myfft::mcomplex* samples, const unsigned& order, 
     if (isInverse) {
         const double sampleSizeReciprocal = 1.0 / double(order);
         for(unsigned i = 0; i < order; ++i) {
-            nextBuffer[i][0] *= sampleSizeReciprocal;
-            nextBuffer[i][1] *= sampleSizeReciprocal;
+            currentBuffer[i][0] *= sampleSizeReciprocal;
+            currentBuffer[i][1] *= sampleSizeReciprocal;
         }
     }
-    delete[] currentBuffer;
-    return nextBuffer;
+    delete[] nextBuffer;
+    return currentBuffer;
+}
+
+
+myfft::mcomplex* myfft::cfft(myfft::mcomplex* samples, const unsigned& order, const bool isInverse) {
+    auto samplesBuffer1 = std::vector<std::complex<double>>(order);
+    auto samplesBuffer2 = std::vector<std::complex<double>>(order);
+    const unsigned numOfBits = unsigned(std::log2(order));
+    const double inverseFactor = isInverse ? -1.0 : 1.0;
+    auto phaseFcts = std::vector<std::complex<double>>(order);
+    auto orderReciprocal = 1.0 / double(order);
+
+    auto samples_p = std::vector<std::complex<double>>(order);
+    for (unsigned i = 0; i < order; ++i) {
+        samples_p[i] = std::complex<double>(samples[i][0], samples[i][1]);
+    }
+
+
+    for (unsigned i = 0; i < order; ++i) {
+        samplesBuffer1[i] = samples_p[bitReverseInt(i, numOfBits)];
+        phaseFcts[i] = std::exp(inverseFactor * std::complex<double>(0, 1) * TWO_PI * double(i) * orderReciprocal);
+    }
+
+    auto currentBuffer = &samplesBuffer1;
+    auto nextBuffer = &samplesBuffer2;
+
+//    for (unsigned i = 0; i < order; ++i) {
+//        for (unsigned j = 0; j < order; ++j) {
+//            (*nextBuffer)[i] += samples_p[j] * std::pow(std::exp(std::complex<double>(0, 1) * TWO_PI * orderReciprocal), j * i);
+//        }
+//    }
+
+
+    for (unsigned i = 1; i <= numOfBits; ++i) {
+        const unsigned factionSize = 1 << i;
+        const unsigned numOfFactions = order >> i;
+        //#pragma omp parallel for schedule(static)
+        for (unsigned j = 0; j < numOfFactions; ++j) {
+            const unsigned halfFactionSize = factionSize >> 1;
+            for (unsigned k = 0; k < halfFactionSize; ++k) {
+                auto temp = phaseFcts[k * numOfFactions] * (*currentBuffer)[j * factionSize + k + halfFactionSize];
+                (*nextBuffer)[j * factionSize + k] = (*currentBuffer)[j * factionSize + k] + temp;
+                (*nextBuffer)[j * factionSize + k + halfFactionSize] = (*currentBuffer)[j * factionSize + k] - temp;
+            }
+        }
+        std::swap(currentBuffer, nextBuffer);
+    }
+
+
+
+
+    if (isInverse) {
+        const double orderReciprocal = 1.0 / double(order);
+        for(unsigned i = 0; i < order; ++i) {
+            (*currentBuffer)[i] *= orderReciprocal;
+        }
+    }
+
+    myfft::mcomplex* sample_r = new myfft::mcomplex[order];
+    for (unsigned i = 0; i < order; ++i) {
+        sample_r[i][0] = (*currentBuffer)[i].real();
+        sample_r[i][1] = (*currentBuffer)[i].imag();
+    }
+    return sample_r;
 }
