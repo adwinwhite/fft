@@ -93,6 +93,7 @@ int main(int argc, char** argv) {
         //Combine and calculate the final results;
         if (world_size > 1) {
             myfft::mcomplex* fftOutputFinal = new myfft::mcomplex[numOfSamplesPer * world_size];
+            #pragma omp parallel for schedule(static)
             for (unsigned i = 0; i < numOfSamplesPer; ++i) {
                 for (unsigned j = 0; j < unsigned(world_size); ++j) {
                     std::complex<double> tempX = 0;

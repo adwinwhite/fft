@@ -8,8 +8,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(fft_view_data fft_view_data.cpp)
 add_executable(fft_generate_data fft_generate_data.cpp)
-add_executable(fft_mpi fft_uniprocessor.cpp fft_mpi.cpp)
 add_executable(verify_fft_result fft_uniprocessor.cpp verify_fft_result.cpp)
+
+add_executable(fft_mpi fft_uniprocessor.cpp fft_mpi.cpp)
+target_compile_options(fft_mpi PRIVATE -O3 -fopenmp -ffast-math -march=native -mtune=native)
+target_link_options(fft_mpi PRIVATE -lgomp -lfftw3_omp -lfftw3 -lm)
+
 #target_compile_options(verify_fft_result PRIVATE -O3 -fopenmp -ffast-math -march=native -mtune=native)
 #target_link_options(verify_fft_result PRIVATE -lgomp -lfftw3_omp -lfftw3 -lm)
 
